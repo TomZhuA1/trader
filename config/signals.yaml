@@ -1,0 +1,30 @@
+# configs/signals.yaml
+labeling:
+  buy_threshold: 0.05  # +5% forward return
+  sell_threshold: -0.05  # -5% forward return
+  horizon_days: 30
+  
+features:
+  use_prediction_vector: true
+  use_aggregate_scores: true
+  use_stage3_indicators: true
+  use_risk_features: true
+  use_market_context: true
+  
+model:
+  type: "lightgbm"
+  params:
+    n_estimators: 1000
+    learning_rate: 0.01
+    max_depth: 5
+    num_leaves: 31
+    class_weight: "balanced"
+    
+decision:
+  top_n: 50  # Select top N by P(BUY)
+  max_hold_days: 30
+  trailing_stop_pct: 0.10  # Optional 10% trailing stop
+  
+output:
+  signals_dir: "data/signals"
+  models_dir: "data/signal_models"

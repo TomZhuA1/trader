@@ -1,0 +1,11 @@
+filters:
+  price_min: 5.0
+  adv_usd_min: 2_000_000  # 30-day average dollar volume
+  adv_percentile: 60  # Top X% by volume
+  history_days_min: 756  # ~3 years
+  exchanges: ["NYSE", "NASDAQ", "AMEX"]
+  exclude_types: ["ETF", "ETN", "PREFERRED", "OTC"]
+  max_missing_pct: 0.10  # Max 10% missing bars in last 1y
+  
+output:
+  file: "data/coarse_universe.csv"

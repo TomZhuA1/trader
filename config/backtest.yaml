@@ -1,0 +1,27 @@
+# configs/backtest.yaml
+portfolio:
+  initial_capital: 1_000_000
+  position_sizing: "equal_weight"  # or "volatility_scaled"
+  max_position_pct: 0.10  # Max 10% per position
+  max_industry_pct: 0.30  # Max 30% per industry (if available)
+  
+rebalance:
+  frequency: "weekly"  # or "daily", "monthly"
+  
+costs:
+  commission_bps: 2  # 2 basis points
+  slippage_bps: 8  # 8 basis points
+  
+risk:
+  stop_loss_pct: 0.15  # Optional 15% stop loss
+  take_profit_pct: 0.30  # Optional 30% take profit
+  
+metrics:
+  calculate: ["cagr", "volatility", "sharpe", "sortino", "max_drawdown", 
+              "calmar", "hit_rate", "avg_win_loss", "turnover"]
+  benchmark: "SPY"
+  
+output:
+  results_dir: "data/backtest_results"
+  report_format: ["csv", "html"]
+  plot_equity_curve: true
