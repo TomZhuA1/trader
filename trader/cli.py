@@ -12,7 +12,7 @@ from typing import Optional
 import yaml
 import os
 
-from ..data import YFinanceProvider, IEXProvider, UniverseManager
+from data import YFinanceProvider, IEXProvider, UniverseManager
 from .features import TechnicalIndicators, TimeSeriesFeatures, TSFreshFeatures
 from .stages import CoarseFilter, FineSelector, Reranker, SignalGenerator, Portfolio, Backtester
 from .models import FineTuner, RerankTrainer, SignalTrainer
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 console = Console()
 app = typer.Typer(help="Hierarchical Stock Selection and Trading Pipeline")
 
-def load_config(config_path: str = "configs/base.yaml") -> dict:
+def load_config(config_path: str = "config/base.yaml") -> dict:
     """Load configuration from YAML file."""
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
