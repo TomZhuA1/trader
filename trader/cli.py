@@ -93,78 +93,99 @@ def fetch(
 
 @app.command()
 def coarse(
-    config_path: str = typer.Option("configs/coarse.yaml", help="Coarse filter config")
+    config_path: str = typer.Option("config/coarse.yaml", help="Coarse filter config")
 ):
     """Run coarse filtering stage."""
     console.print("[bold green]Running coarse filtering...[/bold green]")
-    
+
     # Load configs
     base_config = load_config()
     coarse_config = load_config(config_path)
-    
+
     # Load reference data
-    ref_data = pd.read_csv("data/reference_data.csv")
-    
+    ref_data_path = Path("data/reference_data.csv")
+    if not ref_data_path.exists():
+        console.print("[red]Missing reference_data.csv. Please run `fetch` first.[/red]")
+        raise typer.Exit(code=1)
+
+    ref_data = pd.read_csv(ref_data_path)
+
     # Initialize universe manager
     universe = UniverseManager(ref_data)
-    
-    # Initialize coarse filter
-    coarse_filter = CoarseFilter(coarse_config['filters'])
-    
-    # Load price data
-    data_provider = YFinanceProvider(cache_dir="data/yfinance")
-    symbols = universe.filter_symbols(
-        exchanges=coarse_config['filters']['exchanges']
-    )
-    
-    console.print(f"Processing {len(symbols)} symbols...")
-    
-    # Get price data for filtering
+
+    # Determine provider
+    provider = base_config["data"].get("provider", "yfinance")
+    start_date = base_config["data"].get("start_date", "2015-01-01")
+    end_date = base_config["data"].get("end_date", "2025-08-01")
+
+    if provider == "yfinance":
+        data_provider = YFinanceProvider(cache_dir="data/yfinance")
+    elif provider == "iex":
+        data_provider = IEXProvider()
+    else:
+        console.print(f"[red]Unknown provider: {provider}[/red]")
+        raise typer.Exit(code=1)
+
+    # Filter universe
+    exchanges = coarse_config["filters"].get("exchanges", [])
+    symbols = universe.filter_symbols(exchanges=exchanges)
+    console.print(f"Processing [cyan]{len(symbols)}[/cyan] symbols from exchanges: {exchanges}")
+
+    # Load price data from cache
     price_data = {}
-    cache_dir = Path("data/yfinance")
-    
+    cache_dir = Path("data") / provider
+
     for symbol in track(symbols, description="Loading price data"):
-        # Try to load from cache
-        cache_files = list(cache_dir.glob(f"{symbol}_*.parquet"))
-        if cache_files:
+        pattern = f"{symbol}_{start_date}_{end_date}.parquet"
+        matching_files = list(cache_dir.glob(pattern))
+
+        if matching_files:
             try:
-                df = load_parquet(str(cache_files[0]))
+                df = load_parquet(matching_files[0])
                 price_data[symbol] = df
-            except:
-                pass
-    
-    # Apply coarse filters
+            except Exception as e:
+                console.print(f"[yellow]Warning: Failed to load {symbol}: {e}[/yellow]")
+        else:
+            console.print(f"[yellow]No cached data found for {symbol}[/yellow]")
+
+    if not price_data:
+        console.print("[red]No price data loaded. Ensure `fetch` was run with matching date range.[/red]")
+        raise typer.Exit(code=1)
+
+    # Apply coarse filter
+    coarse_filter = CoarseFilter(coarse_config["filters"])
     filtered_symbols = coarse_filter.filter(price_data, ref_data)
-    
+
     # Save results
+    output_file = coarse_config["output"]["file"]
+    ensure_dir(Path(output_file).parent)
+
     output_df = pd.DataFrame({
-        'symbol': filtered_symbols,
-        'passed_coarse': True
+        "symbol": filtered_symbols,
+        "passed_coarse": True
     })
-    
+
     # Add metrics
     for symbol in filtered_symbols:
         if symbol in price_data:
             df = price_data[symbol]
-            output_df.loc[output_df['symbol'] == symbol, 'avg_volume'] = df['volume'].mean()
-            output_df.loc[output_df['symbol'] == symbol, 'avg_price'] = df['close'].mean()
-            output_df.loc[output_df['symbol'] == symbol, 'avg_dollar_volume'] = (
-                df['close'] * df['volume']
-            ).mean()
-    
-    output_df.to_csv(coarse_config['output']['file'], index=False)
-    
+            output_df.loc[output_df["symbol"] == symbol, "avg_volume"] = df["volume"].mean()
+            output_df.loc[output_df["symbol"] == symbol, "avg_price"] = df["close"].mean()
+            output_df.loc[output_df["symbol"] == symbol, "avg_dollar_volume"] = (df["close"] * df["volume"]).mean()
+
+    output_df.to_csv(output_file, index=False)
+
     # Summary
     table = Table(title="Coarse Filter Summary")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
-    
     table.add_row("Input symbols", str(len(symbols)))
     table.add_row("Passed coarse filter", str(len(filtered_symbols)))
-    table.add_row("Rejection rate", f"{(1 - len(filtered_symbols)/len(symbols))*100:.1f}%")
-    
+    table.add_row("Rejection rate", f"{(1 - len(filtered_symbols) / len(symbols)) * 100:.1f}%")
+    table.add_row("Output file", output_file)
+
     console.print(table)
-    console.print(f"[bold green]✓ Coarse filtering complete! Results saved to {coarse_config['output']['file']}[/bold green]")
+    console.print(f"[bold green]✓ Coarse filtering complete![/bold green]")
 
 @app.command()
 def fine_train(
