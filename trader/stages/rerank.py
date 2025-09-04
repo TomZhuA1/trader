@@ -5,6 +5,7 @@ from lightgbm import LGBMRegressor
 from typing import Dict, List, Optional
 import logging
 from ..features import TimeSeriesFeatures
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 

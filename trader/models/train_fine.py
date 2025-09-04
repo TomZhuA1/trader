@@ -27,7 +27,6 @@ class FineTuner:
         """Train model for specific horizon."""
         # Prepare data
         X, y = self._prepare_data(features, targets, horizon)
-        
         # Select model type
         model = self._create_model()
         

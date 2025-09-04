@@ -9,6 +9,8 @@ from sklearn.linear_model import Lasso
 from sklearn.ensemble import RandomForestRegressor
 from typing import List, Optional, Tuple
 import logging
+from typing import Dict, List, Optional, Tuple
+
 
 logger = logging.getLogger(__name__)
 

@@ -24,20 +24,21 @@ class TechnicalIndicators:
             return features
         
         # Momentum indicators
-        features.update(self._calculate_momentum(df))
+        features = features.join(self._calculate_momentum(df), how='outer')
         
         # Trend indicators
-        features.update(self._calculate_trend(df))
+        features = features.join(self._calculate_trend(df), how='outer')
         
         # Volatility indicators
-        features.update(self._calculate_volatility(df))
+        features = features.join(self._calculate_volatility(df), how='outer')
         
         # Volume indicators
-        features.update(self._calculate_volume(df))
+        features = features.join(self._calculate_volume(df), how='outer')
         
         # Relative indicators
-        features.update(self._calculate_relative(df))
-        
+        features = features.join(self._calculate_relative(df), how='outer')
+
+
         return features
     
     def _calculate_momentum(self, df: pd.DataFrame) -> pd.DataFrame:
