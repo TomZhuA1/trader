@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional
 import yaml
 import os
+import traceback
 
 from data import YFinanceProvider, IEXProvider, UniverseManager
 from .features import TechnicalIndicators, TimeSeriesFeatures, TSFreshFeatures
@@ -189,70 +190,101 @@ def coarse(
 
 @app.command()
 def fine_train(
-    config_path: str = typer.Option("configs/fine.yaml", help="Fine selection config")
+    config_path: str = typer.Option("config/fine.yaml", help="Fine selection config file")
 ):
     """Train fine selection models."""
     console.print("[bold green]Training fine selection models...[/bold green]")
-    
+
     # Load configs
     config = load_config(config_path)
-    
+
     # Load coarse universe
-    coarse_universe = pd.read_csv("data/coarse_universe.csv")
+    coarse_universe_path = Path("data/coarse_universe.csv")
+    if not coarse_universe_path.exists():
+        console.print("[red]Coarse universe not found. Please run the `coarse` stage first.[/red]")
+        raise typer.Exit()
+
+    coarse_universe = pd.read_csv(coarse_universe_path)
     symbols = coarse_universe['symbol'].tolist()
-    
-    console.print(f"Training on {len(symbols)} symbols...")
-    
-    # Load price data
+
+    if not symbols:
+        console.print("[yellow]No symbols passed coarse filter. Aborting fine training.[/yellow]")
+        raise typer.Exit()
+
+    console.print(f"Training on [cyan]{len(symbols)}[/cyan] symbols...")
+
+    # Load cached price data
     price_data = {}
     cache_dir = Path("data/yfinance")
-    
-    for symbol in track(symbols[:50], description="Loading price data"):  # Limit for demo
-        cache_files = list(cache_dir.glob(f"{symbol}_*.parquet"))
-        if cache_files:
-            try:
-                df = load_parquet(str(cache_files[0]))
-                price_data[symbol] = df
-            except:
-                pass
-    
-    # Initialize feature calculators
+
+    for symbol in track(symbols, description="Loading price data"):
+        try:
+            cache_file = next(cache_dir.glob(f"{symbol}_*.parquet"))
+            df = load_parquet(str(cache_file))
+            price_data[symbol] = df
+        except StopIteration:
+            console.print(f"[yellow]Warning: No cached file found for {symbol}[/yellow]")
+        except Exception as e:
+            console.print(f"[red]Error loading data for {symbol}: {e}[/red]")
+
+    if not price_data:
+        console.print("[red]No valid price data loaded. Aborting.[/red]")
+        raise typer.Exit()
+
+    # Initialize technical indicator calculator
     tech_indicators = TechnicalIndicators(windows=config['features']['windows'])
-    
-    # Create features
-    console.print("Calculating features...")
+
+    # Feature engineering
+    console.print("[blue]Calculating features...[/blue]")
     feature_dfs = []
-    
     for symbol, df in price_data.items():
-        features = tech_indicators.calculate_all(df)
-        features['symbol'] = symbol
-        feature_dfs.append(features)
-    
-    all_features = pd.concat(feature_dfs, ignore_index=True)
-    
-    # Train models for each horizon
-    trainer = FineTuner(config)
-    
-    for horizon in config['horizons']:
-        console.print(f"Training model for {horizon}-day horizon...")
+        try:
+            features = tech_indicators.calculate_all(df)
+            features['symbol'] = symbol
+            feature_dfs.append(features)
         
-        # Create targets
+        except Exception as e:
+            console.print(f"[red]Feature calc failed for {symbol}: {e}[/red]")
+        
+
+    if not feature_dfs:
+        console.print("[red]No features computed. Aborting.[/red]")
+        raise typer.Exit()
+
+    all_features = pd.concat(feature_dfs, ignore_index=True)
+    # Initialize trainer
+    trainer = FineTuner(config)
+
+    # Ensure model output directory
+    model_dir = Path("data/fine_models")
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    # Train per-horizon models
+    for horizon in config['horizons']:
+        console.print(f"\n[bold]Training model for {horizon}-day horizon...[/bold]")
+
+        # Create targets per symbol
         targets = {}
         for symbol, df in price_data.items():
-            targets[symbol] = df['close'].pct_change(horizon).shift(-horizon)
-        
+            target = df['close'].pct_change(horizon).shift(-horizon)
+            targets[symbol] = target
+
         # Train model
-        model, metrics = trainer.train_horizon(all_features, targets, horizon)
-        
+        try:
+            model, metrics = trainer.train_horizon(all_features, targets, horizon)
+        except Exception as e:
+            res = traceback.print_exc()
+            console.print(res)
+            console.print(f"[red]Training failed for {horizon}-day horizon: {e}[/red]")
+            continue
+
         # Save model
-        model_path = f"data/fine_models/model_{horizon}d.pkl"
-        ensure_dir("data/fine_models")
+        model_path = model_dir / f"model_{horizon}d.pkl"
         save_pickle(model, model_path)
-        
-        console.print(f"  Model saved to {model_path}")
-        console.print(f"  Metrics: {metrics}")
-    
-    console.print("[bold green]✓ Fine model training complete![/bold green]")
+        console.print(f"[green]✓ Model saved to {model_path}[/green]")
+        console.print(f"[blue]  Metrics: {metrics}[/blue]")
+
+    console.print("\n[bold green]✓ Fine model training complete![/bold green]")
 
 @app.command()
 def fine_predict(
